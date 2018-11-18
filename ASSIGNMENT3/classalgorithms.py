@@ -160,73 +160,100 @@ class NaiveBayes(Classifier):
 		GD = 1 / math.sqrt(2 * math.pi * (std ** 2) ) * math.exp( - ((data - mean) **2 / (2 * (std ** 2) )))
 		return GD
 
-'''
+
 class LogitReg(Classifier):
 
-def __init__(self, parameters={}):
-# Default: no regularization
-self.params = {'regwgt': 0.0, 'regularizer': 'None'}
-self.reset(parameters)
+	def __init__(self, parameters={}):
+		# Default: no regularization
+		self.params = {'regwgt': 0.0, 'regularizer': 'None'}
+		self.reset(parameters)
 
-def reset(self, parameters):
-self.resetparams(parameters)
-self.weights = None
-if self.params['regularizer'] is 'l2':
-self.regularizer = (utils.l2, utils.dl2)
-else:
-self.regularizer = (lambda w: 0, lambda w: np.zeros(w.shape,))
+	def reset(self, parameters):
+		self.resetparams(parameters)
+		self.weights = None
+		if self.params['regularizer'] is 'l2':
+			self.regularizer = (utils.l2, utils.dl2)
+		else:
+			self.regularizer = (lambda w: 0, lambda w: np.zeros(w.shape,))
 
-def logit_cost(self, theta, X, y):
-"""
-Compute cost for logistic regression using theta as the parameters.
-"""
+	def logit_cost(self, theta, X, y):
+		"""
+		Compute cost for logistic regression using theta as the parameters.
+		"""
 
-cost = 0.0
+		cost = 0.0
+		yHat = utils.sigmoid(np.dot(X, theta)) #we have only twwo classes
+		
+		llSum = 0
+		for i in range(X.shape[0]):
+			llSum += y[i] * np.log(yHat[i]) + (1-y[i])*np.log(1-yHat[i])
+			
+		cost = llSum / X.shape[0] #normalizing by number of features
+		
+		if (self.params['regwgt'] == 'l2'):
+			cost += self.params['regwgt'] * utils.l2(theta)
+		
+		return cost
 
-### YOUR CODE HERE
+	def logit_cost_grad(self, theta, X, y):
+		"""
+		Compute gradients of the cost with respect to theta.
+		"""
 
-### END YOUR CODE
+		grad = np.zeros(len(theta))
 
-return cost
+		llSum = 0
+		yHat = utils.sigmoid(np.array([np.dot(X, theta)]))
+		for j in range(yHat.shape[0]):
+			for i in range(theta.shape[0]):
+				sum = (yHat[j] - y) * X[i]
+				grad[i] = sum
+		if (self.params['regwgt'] == 'l2'):
+			grad = grad + self.params['regwgt'] * utils.dl2(theta)
 
-def logit_cost_grad(self, theta, X, y):
-"""
-Compute gradients of the cost with respect to theta.
-"""
+		return grad
 
-grad = np.zeros(len(theta))
+	def learn(self, Xtrain, ytrain):
+		"""
+		Learn the weights using the training data
+		"""
 
-### YOUR CODE HERE
+		self.weights = np.zeros(Xtrain.shape[1],)
+		
+		#based on notes, using SGD here:
+		
+		numsamples = Xtrain.shape[0]
+		dim = Xtrain.shape[1]
+		#copying the same code of ass2 with some changes
+		self.weights = np.random.rand(dim) #giving random wieghts at the very first place
+		
+		epochs = 500
+		
+		for i in range(epochs):
+			shuffling = np.arange(numsamples)
+			np.random.shuffle(shuffling)
+			stepSize = 0.01 / (i + 1) #decreasing stepsize
+			for t in shuffling:
+				grad = self.logit_cost_grad(self.weights, Xtrain[t], ytrain[t]) #using BGD function
+				self.weights = self.weights - stepSize * grad
 
-### END YOUR CODE
+	def predict(self, Xtest):
+		"""
+		Use the parameters computed in self.learn to give predictions on new
+		observations.
+		"""
+		ytest = np.zeros(Xtest.shape[0], dtype=int)
+		
+		probability = utils.sigmoid(np.dot(self.weights, Xtest.transpose()))
+		classifier = np.ones(len(probability),)
+		classifier[probability < 0.5] = 0
+		ytest = classifier
+		
 
-return grad
+		assert len(ytest) == Xtest.shape[0]
+		return ytest
 
-def learn(self, Xtrain, ytrain):
-"""
-Learn the weights using the training data
-"""
-
-self.weights = np.zeros(Xtrain.shape[1],)
-
-### YOUR CODE HERE
-
-### END YOUR CODE
-
-def predict(self, Xtest):
-"""
-Use the parameters computed in self.learn to give predictions on new
-observations.
-"""
-ytest = np.zeros(Xtest.shape[0], dtype=int)
-
-### YOUR CODE HERE
-
-### END YOUR CODE
-
-assert len(ytest) == Xtest.shape[0]
-return ytest
-
+'''
 class NeuralNet(Classifier):
 """ Implement a neural network with a single hidden layer. Cross entropy is
 used as the cost function.
