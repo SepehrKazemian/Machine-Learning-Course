@@ -182,7 +182,7 @@ class LogitReg(Classifier):
 		"""
 
 		cost = 0.0
-		yHat = utils.sigmoid(np.dot(X, theta)) #we have only twwo classes
+		yHat = utils.sigmoid(np.dot(X.transpose(), theta)) #we have only twwo classes
 		
 		llSum = 0
 		for i in range(X.shape[0]):
@@ -253,71 +253,105 @@ class LogitReg(Classifier):
 		assert len(ytest) == Xtest.shape[0]
 		return ytest
 
-'''
+
 class NeuralNet(Classifier):
-""" Implement a neural network with a single hidden layer. Cross entropy is
-used as the cost function.
+	""" Implement a neural network with a single hidden layer. Cross entropy is
+	used as the cost function.
 
-Parameters:
-nh -- number of hidden units
-transfer -- transfer function, in this case, sigmoid
-stepsize -- stepsize for gradient descent
-epochs -- learning epochs
+	Parameters:
+	nh -- number of hidden units
+	transfer -- transfer function, in this case, sigmoid
+	stepsize -- stepsize for gradient descent
+	epochs -- learning epochs
 
-Note:
-1) feedforword will be useful! Make sure it can run properly.
-2) Implement the back-propagation algorithm with one layer in ``backprop`` without
-any other technique or trick or regularization. However, you can implement
-whatever you want outside ``backprob``.
-3) Set the best params you find as the default params. The performance with
-the default params will affect the points you get.
-"""
-def __init__(self, parameters={}):
-self.params = {'nh': 16,
-'transfer': 'sigmoid',
-'stepsize': 0.01,
-'epochs': 10}
-self.reset(parameters)
+	Note:
+	1) feedforword will be useful! Make sure it can run properly.
+	2) Implement the back-propagation algorithm with one layer in ``backprop`` without
+	any other technique or trick or regularization. However, you can implement
+	whatever you want outside ``backprob``.
+	3) Set the best params you find as the default params. The performance with
+	the default params will affect the points you get.
+	"""
+	
+#******** using http://www.wildml.com/2015/09/implementing-a-neural-network-from-scratch/ *****#
+	def __init__(self, parameters={}):
+		self.params = {'nh': 16,
+		'transfer': 'sigmoid',
+		'stepsize': 0.01,
+		'epochs': 10}
+		self.reset(parameters)
 
-def reset(self, parameters):
-self.resetparams(parameters)
-if self.params['transfer'] is 'sigmoid':
-self.transfer = utils.sigmoid
-self.dtransfer = utils.dsigmoid
-else:
-# For now, only allowing sigmoid transfer
-raise Exception('NeuralNet -> can only handle sigmoid transfer, must set option transfer to string sigmoid')
-self.w_input = None
-self.w_output = None
+	def reset(self, parameters):
+		self.resetparams(parameters)
+		if self.params['transfer'] is 'sigmoid':
+			print("aaa")
+			self.transfer = utils.sigmoid
+			self.dtransfer = utils.dsigmoid
+		else:
+			# For now, only allowing sigmoid transfer
+			raise Exception('NeuralNet -> can only handle sigmoid transfer, must set option transfer to string sigmoid')
+		self.w_input = None
+		self.w_output = None
 
-def feedforward(self, inputs):
-"""
-Returns the output of the current neural network for the given input
-"""
-# hidden activations
-a_hidden = self.transfer(np.dot(self.w_input, inputs))
+	def feedforward(self, inputs):
+		"""
+		Returns the output of the current neural network for the given input
+		"""
+		# hidden activations
+		a_hidden = self.transfer(np.dot(self.w_input, inputs))
 
-# output activations
-a_output = self.transfer(np.dot(self.w_output, a_hidden))
+		# output activations
+		a_output = self.transfer(np.dot(self.w_output, a_hidden))
+		
+		
+		return (a_hidden, a_output)
 
-return (a_hidden, a_output)
+	def backprop(self, x, y):
+		"""
+		Return a tuple ``(nabla_input, nabla_output)`` representing the gradients
+		for the cost function with respect to self.w_input and self.w_output.
+		"""
+		x = x.reshape((x.shape[0], 1)) #unless getting numpy.float64 error
+		(layer1, output) = self.feedforward(x)
+		
+		bp2 = output - y
+		bp1 = np.multiply(np.dot(self.w_output.transpose(), bp2), self.dtransfer(np.dot(self.w_input, x)))
+		nabla_output = (np.dot(bp2, layer1.transpose()))/x.shape[0]
+		nabla_input = (np.multiply(bp1, x.transpose()))/x.shape[0]
 
-def backprop(self, x, y):
-"""
-Return a tuple ``(nabla_input, nabla_output)`` representing the gradients
-for the cost function with respect to self.w_input and self.w_output.
-"""
+		assert nabla_input.shape == self.w_input.shape
+		assert nabla_output.shape == self.w_output.shape
+		return (nabla_input, nabla_output)
 
-### YOUR CODE HERE
 
-### END YOUR CODE
+	def learn(self, Xtrain, Ytrain):
+		dim = Xtrain.shape[1]
+		self.w_input = np.random.rand(self.params['nh'], dim)
+		self.w_output = np.random.rand(1, self.params['nh'])
+		numsamples = Xtrain.shape[0]
+		
+		for i in range(1, self.params['epochs']):
+			shuffling = np.arange(numsamples)
+			np.random.shuffle(shuffling)
+#			self.stepsize = self.params['stepsize'] / (i)
+#			I wanted to decrease the stepsize, but it increased the error
+			
+			for miniBatches in shuffling:
+				nabla_input, nabla_output = self.backprop(Xtrain[miniBatches], Ytrain[miniBatches])
+				self.w_input = np.subtract(self.w_input, self.params['stepsize'] * nabla_input)
+				self.w_output = np.subtract(self.w_output, self.params['stepsize'] * nabla_output)
+				
+	def predict(self, Xtest):
+		ytest = np.zeros(Xtest.shape[0], dtype=int)
+		
+		ytest = [(self.feedforward(Xtest[i, :])[1] > 0.5) for i in range(Xtest.shape[0])]
+		
+		assert len(ytest) == Xtest.shape[0]
+		return ytest
+				
+				
 
-assert nabla_input.shape == self.w_input.shape
-assert nabla_output.shape == self.w_output.shape
-return (nabla_input, nabla_output)
-
-# TODO: implement learn and predict functions
-
+'''
 class KernelLogitReg(LogitReg):
 """ Implement kernel logistic regression.
 
