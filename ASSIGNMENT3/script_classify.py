@@ -42,14 +42,18 @@ def cross_validate(K, X, Y, classalgs):
 if __name__ == '__main__':
     trainsize = 5000
     testsize = 5000
-    numruns = 10
+    numruns = 2
 
     classalgs = {#'Random': algs.Classifier(),
    #              'Naive Bayes': algs.NaiveBayes({'usecolumnones': False}),
   #               'Naive Bayes Ones': algs.NaiveBayes({'usecolumnones': True}),
- #                'Linear Regression': algs.LinearRegressionClass(),
-#                 'Logistic Regression': algs.LogitReg(),
-                 'Neural Network': algs.NeuralNet({'epochs': 100})
+  #               'Linear Regression': algs.LinearRegressionClass(),
+   #              'Logistic Regression': algs.LogitReg(),
+#                 'Neural Network': algs.NeuralNet({'epochs': 100, 'hiddenLayers' : 1}),
+                  'Neural Network': algs.NeuralNet({'epochs': 100, 'hiddenLayers' : 2}),
+#                  'Kernel Logistic Regression linear': algs.KernelLogitReg({'kernel': 'linear', 'regularizer': 'l2'}),
+#                  'Kernel Logistic Regression hamming': algs.KernelLogitReg({'kernel': 'hamming', 'regularizer': 'l2'})
+
                 }
     numalgs = len(classalgs)
 

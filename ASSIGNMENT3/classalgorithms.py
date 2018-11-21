@@ -1,6 +1,7 @@
 from __future__ import division  # floating point division
 import numpy as np
 import utilities as utils
+import script_classify as scs
 import math
 
 class Classifier:
@@ -277,8 +278,9 @@ class NeuralNet(Classifier):
 	def __init__(self, parameters={}):
 		self.params = {'nh': 16,
 		'transfer': 'sigmoid',
-		'stepsize': 0.01,
-		'epochs': 10}
+		'stepsize': 0.05,
+		'epochs': 10,
+		'hiddenLayers' : 1}
 		self.reset(parameters)
 
 	def reset(self, parameters):
@@ -291,155 +293,279 @@ class NeuralNet(Classifier):
 			# For now, only allowing sigmoid transfer
 			raise Exception('NeuralNet -> can only handle sigmoid transfer, must set option transfer to string sigmoid')
 		self.w_input = None
+		self.w2 = None
 		self.w_output = None
 
-	def feedforward(self, inputs):
+	def feedforward(self, inputs, numberOfHiddenLayer):
 		"""
 		Returns the output of the current neural network for the given input
 		"""
+		
+		
 		# hidden activations
-		a_hidden = self.transfer(np.dot(self.w_input, inputs))
+		a1 = self.transfer(np.dot(self.w_input, inputs))
 
 		# output activations
-		a_output = self.transfer(np.dot(self.w_output, a_hidden))
+
+		a2 = self.transfer(np.dot(self.w2, a1))
 		
+		if numberOfHiddenLayer == 2:
+
+			a3 = self.transfer(np.dot(self.w_output, a2))
+			return(a1, a2, a3)
 		
-		return (a_hidden, a_output)
+		elif numberOfHiddenLayer == 1:
+			return (a1, a2)
+	
+	def relu_derivative(self, X):
+		return 1. * (X > 0)
 
 	def backprop(self, x, y):
 		"""
 		Return a tuple ``(nabla_input, nabla_output)`` representing the gradients
 		for the cost function with respect to self.w_input and self.w_output.
 		"""
-		x = x.reshape((x.shape[0], 1)) #unless getting numpy.float64 error
-		(layer1, output) = self.feedforward(x)
-		
-		bp2 = output - y
-		bp1 = np.multiply(np.dot(self.w_output.transpose(), bp2), self.dtransfer(np.dot(self.w_input, x)))
-		nabla_output = (np.dot(bp2, layer1.transpose()))/x.shape[0]
-		nabla_input = (np.multiply(bp1, x.transpose()))/x.shape[0]
+		if self.params['hiddenLayers'] == 2:
+			numberOfHiddenLayer = 2
+			
+			x = x.reshape((x.shape[0], 1)) #unless we will get numpy.float64 error
+			(a1, a2, output) = self.feedforward(x, numberOfHiddenLayer)
+			bp = output - y
+			nabla_output = (np.dot(bp, a2.transpose()))/x.shape[0] #normalizing
+			
+			bp1 = np.multiply(np.dot(self.w_output.transpose(), bp), self.dtransfer(np.dot(self.w2, a1)))
+			nabla1 = (np.dot(bp1, a1.transpose()))/x.shape[0] #normalizing
 
-		assert nabla_input.shape == self.w_input.shape
-		assert nabla_output.shape == self.w_output.shape
-		return (nabla_input, nabla_output)
+			bp2 = np.multiply(np.dot(self.w2.transpose(), bp1), self.dtransfer(np.dot(self.w_input, x)))			
+			nabla_input = (np.dot(bp2, x.transpose()))/x.shape[0] #normalizing
+
+			
+			
+			assert nabla_input.shape == self.w_input.shape
+			assert nabla1.shape == self.w2.shape
+			assert nabla_output.shape == self.w_output.shape
+			return (nabla_input, nabla1, nabla_output)
+			
+		elif self.params['hiddenLayers'] == 1:
+			numberOfHiddenLayer = 1
+			
+			x = x.reshape((x.shape[0], 1)) #unless we will get numpy.float64 error
+			(layer1, output) = self.feedforward(x, numberOfHiddenLayer)
+			bp1 = output - y
+			nabla_output = (np.dot(bp1, layer1.transpose()))/x.shape[0] #normalizing
+			bp2 = (np.dot(self.w2.transpose(), bp1) * self.dtransfer(np.dot(self.w_input, x)))
+			
+			nabla_input = (np.multiply(bp2, x.transpose()))/x.shape[0] #normalizing
+
+			assert nabla_input.shape == self.w_input.shape
+			assert nabla_output.shape == self.w2.shape
+			return (nabla_input, nabla_output)
 
 
 	def learn(self, Xtrain, Ytrain):
 		dim = Xtrain.shape[1]
-		self.w_input = np.random.rand(self.params['nh'], dim)
-		self.w_output = np.random.rand(1, self.params['nh'])
+		if self.params['hiddenLayers'] == 1:
+			self.w_input = np.random.rand(self.params['nh'], dim)
+			self.w2 = np.random.rand(1, self.params['nh'])
+		elif self.params['hiddenLayers'] == 2:
+			self.w_input = np.random.rand(self.params['nh'], dim)
+			self.w2 = np.random.rand(self.params['nh'], self.params['nh'])
+			self.w_output = np.random.rand(1, self.params['nh'])
 		numsamples = Xtrain.shape[0]
 		
-		for i in range(1, self.params['epochs']):
+		for i in range(100):
 			shuffling = np.arange(numsamples)
 			np.random.shuffle(shuffling)
-#			self.stepsize = self.params['stepsize'] / (i)
+#			self.params['stepsize'] = self.params['stepsize'] / (i)
 #			I wanted to decrease the stepsize, but it increased the error
-			
+			counterr = 0
 			for miniBatches in shuffling:
-				nabla_input, nabla_output = self.backprop(Xtrain[miniBatches], Ytrain[miniBatches])
-				self.w_input = np.subtract(self.w_input, self.params['stepsize'] * nabla_input)
-				self.w_output = np.subtract(self.w_output, self.params['stepsize'] * nabla_output)
+				if self.params['hiddenLayers'] == 1:
+					nabla_input, nabla_output = self.backprop(Xtrain[miniBatches], Ytrain[miniBatches])
+					self.w_input = np.subtract(self.w_input, self.params['stepsize'] * nabla_input)
+					self.w2 = np.subtract(self.w2, self.params['stepsize'] * nabla_output)
+					test1 = self.transfer(np.dot(self.w_input, Xtrain[miniBatches]))
+					test2 = self.transfer(np.dot(self.w2, test1))
+					err1 = (math.fabs(Ytrain[miniBatches]) > 0.5)
+					err2 = (math.fabs(test2) > 0.5)
+					if (err1 == err2):
+						counterr += 1
+					
+				elif self.params['hiddenLayers'] == 2:
+					nabla_input, nabla1, nabla_output = self.backprop(Xtrain[miniBatches], Ytrain[miniBatches])
+					self.w_input = np.subtract(self.w_input, self.params['stepsize'] * nabla_input)
+					self.w2 = np.subtract(self.w2, self.params['stepsize'] * nabla1)
+					self.w_output = np.subtract(self.w_output, self.params['stepsize'] * nabla_output)
+					test1 = self.transfer(np.dot(self.w_input, Xtrain[miniBatches]))
+					test2 = self.transfer(np.dot(self.w2, test1))
+					test3 = self.transfer(np.dot(self.w_output, test2))
+					err1 = (math.fabs(Ytrain[miniBatches]) > 0.5)
+					err2 = (math.fabs(test3) > 0.5)
+					if (err1 == err2):
+						counterr += 1
+			
+			print(counterr / Ytrain.shape[0])
 				
 	def predict(self, Xtest):
 		ytest = np.zeros(Xtest.shape[0], dtype=int)
 		
-		ytest = [(self.feedforward(Xtest[i, :])[1] > 0.5) for i in range(Xtest.shape[0])]
+#		print(self.feedforward(Xtest[i, :], self.params['hiddenLayers']))
+		print(self.feedforward(Xtest[0, :], self.params['hiddenLayers']))
+		ytest = [(self.feedforward(Xtest[i, :], self.params['hiddenLayers'])[-1] > 0.5) for i in range(Xtest.shape[0])]
+		
+#		print(ytest)
 		
 		assert len(ytest) == Xtest.shape[0]
 		return ytest
 				
 				
 
-'''
+
 class KernelLogitReg(LogitReg):
-""" Implement kernel logistic regression.
+	""" Implement kernel logistic regression.
 
-This class should be quite similar to class LogitReg except one more parameter
-'kernel'. You should use this parameter to decide which kernel to use (None,
-linear or hamming).
+	This class should be quite similar to class LogitReg except one more parameter
+	'kernel'. You should use this parameter to decide which kernel to use (None,
+	linear or hamming).
 
-Note:
-1) Please use 'linear' and 'hamming' as the input of the paramteter
-'kernel'. For example, you can create a logistic regression classifier with
-linear kerenl with "KernelLogitReg({'kernel': 'linear'})".
-2) Please don't introduce any randomness when computing the kernel representation.
-"""
-def __init__(self, parameters={}):
-# Default: no regularization
-self.params = {'regwgt': 0.0, 'regularizer': 'None', 'kernel': 'None'}
-self.reset(parameters)
+	Note:
+	1) Please use 'linear' and 'hamming' as the input of the paramteter
+	'kernel'. For example, you can create a logistic regression classifier with
+	linear kerenl with "KernelLogitReg({'kernel': 'linear'})".
+	2) Please don't introduce any randomness when computing the kernel representation.
+	"""
+	def __init__(self, parameters={}):
+		# Default: no regularization
+		self.params = {'regwgt': 0.0, 'regularizer': 'None', 'kernel': 'None'}
+		self.reset(parameters)
 
-def learn(self, Xtrain, ytrain):
-"""
-Learn the weights using the training data.
+	def learn(self, Xtrain, ytrain):
+		objLR = LogitReg()
+		"""
+		Learn the weights using the training data.
 
-Ktrain the is the kernel representation of the Xtrain.
-"""
-Ktrain = None
+		Ktrain the is the kernel representation of the Xtrain.
+		"""
+		Ktrain = None
 
-### YOUR CODE HERE
+		### YOUR CODE HERE
+		self.kNum = 100
+		self.kernel = Xtrain[ : self.kNum]
+		
+		Ktrain = np.zeros((Xtrain.shape[0], self.kNum))
+		
+		if self.params['kernel'] == 'linear':
+			Ktrain = np.dot(Xtrain, self.kernel.T)
+		elif self.params['kernel'] == 'hamming':
+			print("ccc")
+			Ktrain = self.hammingDis(Xtrain)
+						
+						
+		
 
-### END YOUR CODE
+		### END YOUR CODE
 
-self.weights = np.zeros(Ktrain.shape[1],)
+		self.weights = np.zeros(Ktrain.shape[1],)
 
-### YOUR CODE HERE
+		### YOUR CODE HERE
+		#using SGD --> copying my SGD algorithm and modifying it
+		numsamples = Xtrain.shape[0]
+		self.weights = np.random.rand(self.kNum)
+		stepSize = 0.000001
+		for i in range(1000):
+			shuffling = np.arange(numsamples)
+			np.random.shuffle(shuffling)
+#			if (self.params['kernel'] == 'hamming'):
+			stepSize /= (i+1)
+			
+			for miniBatches in shuffling:
+				g = objLR.logit_cost_grad(self.weights, Ktrain[miniBatches], ytrain[miniBatches])
+				self.weights = self.weights - stepSize * g
 
-### END YOUR CODE
+		### END YOUR CODE
 
-self.transformed = Ktrain # Don't delete this line. It's for evaluation.
+		self.transformed = Ktrain # Don't delete this line. It's for evaluation.
 
-# TODO: implement necessary functions
+		# TODO: implement necessary functions
+	def predict(self,Xtest):
+	
+		if self.params['kernel'] == 'linear':
+			kernelTest = np.dot(Xtest, self.kernel.T) 
+		elif self.params['kernel'] == 'hamming':
+			print("bbb")
+			kernelTest = self.hammingDis(Xtest)
+			
+		testYnoSig = np.dot(self.weights, kernelTest.transpose())
+		testYprobability = utils.sigmoid(testYnoSig)
+		
+		ytest = utils.threshold_probs(testYprobability)
+		
+		assert len(ytest) == Xtest.shape[0]
+		return ytest
 
+	def hammingDis(self, Xtrain):
+		Ktrain = None
+		Ktrain = np.zeros((Xtrain.shape[0], self.kNum))
+		print(Xtrain.shape)
 
+		for i in range(Xtrain.shape[0]):
+			for k in range(self.kNum):
+				hamDis = 0
+				for j in range(len(Xtrain[i])):
+					if Xtrain[i][j] == Xtrain[k][j]:
+						Ktrain[i, k] += 1	
+						
+		print(Ktrain)
+		return Ktrain
+		
+		
 # ======================================================================
 
 def test_lr():
-print("Basic test for logistic regression...")
-clf = LogitReg()
-theta = np.array([0.])
-X = np.array([[1.]])
-y = np.array([0])
+	print("Basic test for logistic regression...")
+	clf = LogitReg()
+	theta = np.array([0.])
+	X = np.array([[1.]])
+	y = np.array([0])
 
-try:
-cost = clf.logit_cost(theta, X, y)
-except:
-raise AssertionError("Incorrect input format for logit_cost!")
-assert isinstance(cost, float), "logit_cost should return a float!"
+	try:
+		cost = clf.logit_cost(theta, X, y)
+	except:
+		raise AssertionError("Incorrect input format for logit_cost!")
+	assert isinstance(cost, float), "logit_cost should return a float!"
 
-try:
-grad = clf.logit_cost_grad(theta, X, y)
-except:
-raise AssertionError("Incorrect input format for logit_cost_grad!")
-assert isinstance(grad, np.ndarray), "logit_cost_grad should return a numpy array!"
+	try:
+		grad = clf.logit_cost_grad(theta, X, y)
+	except:
+		raise AssertionError("Incorrect input format for logit_cost_grad!")
+	assert isinstance(grad, np.ndarray), "logit_cost_grad should return a numpy array!"
 
-print("Test passed!")
-print("-" * 50)
+	print("Test passed!")
+	print("-" * 50)
 
 def test_nn():
-print("Basic test for neural network...")
-clf = NeuralNet()
-X = np.array([[1., 2.], [2., 1.]])
-y = np.array([0, 1])
-clf.learn(X, y)
+	print("Basic test for neural network...")
+	clf = NeuralNet()
+	X = np.array([[1., 2.], [2., 1.]])
+	y = np.array([0, 1])
+	clf.learn(X, y)
 
-assert isinstance(clf.w_input, np.ndarray), "w_input should be a numpy array!"
-assert isinstance(clf.w_output, np.ndarray), "w_output should be a numpy array!"
+	assert isinstance(clf.w_input, np.ndarray), "w_input should be a numpy array!"
+	assert isinstance(clf.w_output, np.ndarray), "w_output should be a numpy array!"
 
-try:
-res = clf.feedforward(X[0, :])
-except:
-raise AssertionError("feedforward doesn't work!")
+	try:
+		res = clf.feedforward(X[0, :])
+	except:
+		raise AssertionError("feedforward doesn't work!")
 
-try:
-res = clf.backprop(X[0, :], y[0])
-except:
-raise AssertionError("backprob doesn't work!")
+	try:
+		res = clf.backprop(X[0, :], y[0])
+	except:
+		raise AssertionError("backprob doesn't work!")
 
-print("Test passed!")
-print("-" * 50)
-'''
+	print("Test passed!")
+	print("-" * 50)
+
 def main():
 	test_lr()
 	test_nn()
