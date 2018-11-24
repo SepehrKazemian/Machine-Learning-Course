@@ -3,6 +3,7 @@ import numpy as np
 import utilities as utils
 import script_classify as scs
 import math
+import time
 
 class Classifier:
 	"""
@@ -100,7 +101,7 @@ class NaiveBayes(Classifier):
 
 		self.numclasses = 2 #we checked by np.amax and min and we found out it has only 2 classes
 				
-		if self.params == "usecolumnoneones":
+		if self.params["usecolumnones"]:
 			self.numfeatures = Xtrain.shape[1]
 		else:
 			self.numfeatures = Xtrain.shape[1] - 1 #excluding columns of 1	
@@ -112,7 +113,7 @@ class NaiveBayes(Classifier):
 		self.stds = np.zeros(origin_shape)
 
 		
-		if self.params == "usecolumnoneones":
+		if self.params["usecolumnones"]:
 			self.means[1] = Xtrain[ytrain == 1].mean(axis = 0)
 			self.stds[1] = Xtrain[ytrain == 1].std(axis = 0)
 			self.means[0] = Xtrain[ytrain == 0].mean(axis = 0)
@@ -158,15 +159,18 @@ class NaiveBayes(Classifier):
 		return ytest
 		
 	def gaussianDistribution(self, data, mean, std):
-		GD = 1 / math.sqrt(2 * math.pi * (std ** 2) ) * math.exp( - ((data - mean) **2 / (2 * (std ** 2) )))
-		return GD
+		if std != 0:
+			GD = 1 / math.sqrt(2 * math.pi * (std ** 2) ) * math.exp( - ((data - mean) **2 / (2 * (std ** 2) )))
+			return GD
+		if std == 0:
+			return 1
 
 
 class LogitReg(Classifier):
 
 	def __init__(self, parameters={}):
 		# Default: no regularization
-		self.params = {'regwgt': 0.0, 'regularizer': 'None'}
+		self.params = {'stepsize': 0.01, 'epochs': 100, 'regwgt': 0.0, 'regularizer': 'None'}
 		self.reset(parameters)
 
 	def reset(self, parameters):
@@ -229,11 +233,12 @@ class LogitReg(Classifier):
 		self.weights = np.random.rand(dim) #giving random wieghts at the very first place
 		
 		epochs = 500
+		stepSize = self.params['stepsize']
 		
-		for i in range(epochs):
+		for i in range(self.params['epochs']):
 			shuffling = np.arange(numsamples)
 			np.random.shuffle(shuffling)
-			stepSize = 0.01 / (i + 1) #decreasing stepsize
+#			stepSize = stepSize / (i + 1) #decreasing stepsize
 			for t in shuffling:
 				grad = self.logit_cost_grad(self.weights, Xtrain[t], ytrain[t]) #using BGD function
 				self.weights = self.weights - stepSize * grad
@@ -286,7 +291,7 @@ class NeuralNet(Classifier):
 	def reset(self, parameters):
 		self.resetparams(parameters)
 		if self.params['transfer'] is 'sigmoid':
-			print("aaa")
+#			print("aaa")
 			self.transfer = utils.sigmoid
 			self.dtransfer = utils.dsigmoid
 		else:
@@ -317,8 +322,6 @@ class NeuralNet(Classifier):
 		elif numberOfHiddenLayer == 1:
 			return (a1, a2)
 	
-	def relu_derivative(self, X):
-		return 1. * (X > 0)
 
 	def backprop(self, x, y):
 		"""
@@ -327,10 +330,16 @@ class NeuralNet(Classifier):
 		"""
 		if self.params['hiddenLayers'] == 2:
 			numberOfHiddenLayer = 2
-			
 			x = x.reshape((x.shape[0], 1)) #unless we will get numpy.float64 error
 			(a1, a2, output) = self.feedforward(x, numberOfHiddenLayer)
+#			print(x.shape)
+#			print(a1.shape)
+#			print(a2.shape)
+#			print(output.shape)
+
+			
 			bp = output - y
+#			print(a2.shape)
 			nabla_output = (np.dot(bp, a2.transpose()))/x.shape[0] #normalizing
 			
 			bp1 = np.multiply(np.dot(self.w_output.transpose(), bp), self.dtransfer(np.dot(self.w2, a1)))
@@ -364,6 +373,7 @@ class NeuralNet(Classifier):
 
 	def learn(self, Xtrain, Ytrain):
 		dim = Xtrain.shape[1]
+#		print(dim)
 		if self.params['hiddenLayers'] == 1:
 			self.w_input = np.random.rand(self.params['nh'], dim)
 			self.w2 = np.random.rand(1, self.params['nh'])
@@ -372,15 +382,16 @@ class NeuralNet(Classifier):
 			self.w2 = np.random.rand(self.params['nh'], self.params['nh'])
 			self.w_output = np.random.rand(1, self.params['nh'])
 		numsamples = Xtrain.shape[0]
+#		print(numsamples)
 		
-		for i in range(100):
-			shuffling = np.arange(numsamples)
-			np.random.shuffle(shuffling)
-#			self.params['stepsize'] = self.params['stepsize'] / (i)
-#			I wanted to decrease the stepsize, but it increased the error
-			counterr = 0
-			for miniBatches in shuffling:
-				if self.params['hiddenLayers'] == 1:
+		if self.params['hiddenLayers'] == 1:
+			for i in range(self.params['epochs']):
+				shuffling = np.arange(numsamples)
+				np.random.shuffle(shuffling)
+	#			self.params['stepsize'] = self.params['stepsize'] / (i)
+	#			I wanted to decrease the stepsize, but it increased the error
+				counterr = 0
+				for miniBatches in shuffling:
 					nabla_input, nabla_output = self.backprop(Xtrain[miniBatches], Ytrain[miniBatches])
 					self.w_input = np.subtract(self.w_input, self.params['stepsize'] * nabla_input)
 					self.w2 = np.subtract(self.w2, self.params['stepsize'] * nabla_output)
@@ -391,26 +402,45 @@ class NeuralNet(Classifier):
 					if (err1 == err2):
 						counterr += 1
 					
-				elif self.params['hiddenLayers'] == 2:
-					nabla_input, nabla1, nabla_output = self.backprop(Xtrain[miniBatches], Ytrain[miniBatches])
-					self.w_input = np.subtract(self.w_input, self.params['stepsize'] * nabla_input)
-					self.w2 = np.subtract(self.w2, self.params['stepsize'] * nabla1)
-					self.w_output = np.subtract(self.w_output, self.params['stepsize'] * nabla_output)
-					test1 = self.transfer(np.dot(self.w_input, Xtrain[miniBatches]))
-					test2 = self.transfer(np.dot(self.w2, test1))
-					test3 = self.transfer(np.dot(self.w_output, test2))
-					err1 = (math.fabs(Ytrain[miniBatches]) > 0.5)
-					err2 = (math.fabs(test3) > 0.5)
-					if (err1 == err2):
-						counterr += 1
-			
-			print(counterr / Ytrain.shape[0])
+#				elif self.params['hiddenLayers'] == 2:
+#					nabla_input, nabla1, nabla_output = self.backprop(Xtrain[miniBatches], Ytrain[miniBatches])
+#					self.w_input = np.subtract(self.w_input, self.params['stepsize'] * nabla_input)
+#					self.w2 = np.subtract(self.w2, self.params['stepsize'] * nabla1)
+#					self.w_output = np.subtract(self.w_output, self.params['stepsize'] * nabla_output)
+#					test1 = self.transfer(np.dot(self.w_input, Xtrain[miniBatches]))
+#					test2 = self.transfer(np.dot(self.w2, test1))
+#					test3 = self.transfer(np.dot(self.w_output, test2))
+#					err1 = (math.fabs(Ytrain[miniBatches]) > 0.5)
+#					err2 = (math.fabs(test3) > 0.5)
+#					if (err1 == err2):
+#						counterr += 1
+#						print(counterr / Ytrain.shape[0])
+
+		e = 1e-3
+		p = 0.9
+		if self.params['hiddenLayers'] == 2:
+			for i in range(self.params['epochs']):
+				eta = 0.001
+				v_input = np.zeros((self.params['nh'], dim))
+				v1 = np.zeros((self.params['nh'], self.params['nh']))
+				v_output = np.zeros((1, self.params['nh']))
+				shuffling = np.arange(numsamples)
+				np.random.shuffle(shuffling)
+				for j in shuffling:
+					nabla_input, nabla1, nabla_output = self.backprop(Xtrain[j], Ytrain[j])
+					v_input = p * v_input + (1 - p) * (nabla_input**2)
+					v1 = p * v1 + (1 - p) * (nabla1**2)
+					v_output = p * v_output + (1 - p) * (nabla_output**2)
+					self.w_input = self.w_input - (self.params['stepsize'] / np.sqrt(v_input+ e) * nabla_input )
+					self.w2 = self.w2 - (self.params['stepsize'] / np.sqrt(v1+ e) * nabla1 )
+					self.w_output = self.w_output - (self.params['stepsize'] / np.sqrt(v_output+ e) * nabla_output )
+				
 				
 	def predict(self, Xtest):
 		ytest = np.zeros(Xtest.shape[0], dtype=int)
 		
 #		print(self.feedforward(Xtest[i, :], self.params['hiddenLayers']))
-		print(self.feedforward(Xtest[0, :], self.params['hiddenLayers']))
+#		print(self.feedforward(Xtest[0, :], self.params['hiddenLayers']))
 		ytest = [(self.feedforward(Xtest[i, :], self.params['hiddenLayers'])[-1] > 0.5) for i in range(Xtest.shape[0])]
 		
 #		print(ytest)
@@ -449,7 +479,7 @@ class KernelLogitReg(LogitReg):
 		Ktrain = None
 
 		### YOUR CODE HERE
-		self.kNum = 100
+		self.kNum = 50
 		self.kernel = Xtrain[ : self.kNum]
 		
 		Ktrain = np.zeros((Xtrain.shape[0], self.kNum))
@@ -457,7 +487,7 @@ class KernelLogitReg(LogitReg):
 		if self.params['kernel'] == 'linear':
 			Ktrain = np.dot(Xtrain, self.kernel.T)
 		elif self.params['kernel'] == 'hamming':
-			print("ccc")
+		#	print("ccc")
 			Ktrain = self.hammingDis(Xtrain)
 						
 						
@@ -465,23 +495,36 @@ class KernelLogitReg(LogitReg):
 
 		### END YOUR CODE
 
+		counter = 0
+		trueVar = 0
 		self.weights = np.zeros(Ktrain.shape[1],)
 
 		### YOUR CODE HERE
 		#using SGD --> copying my SGD algorithm and modifying it
 		numsamples = Xtrain.shape[0]
 		self.weights = np.random.rand(self.kNum)
-		stepSize = 0.000001
-		for i in range(1000):
+		if self.params['kernel'] == 'hamming':
+			stepSize = 0.001
+		else:
+			stepSize = 0.01
+		for i in range(700):
 			shuffling = np.arange(numsamples)
 			np.random.shuffle(shuffling)
-#			if (self.params['kernel'] == 'hamming'):
-			stepSize /= (i+1)
+			if (self.params['kernel'] == 'hamming'):
+				stepSize /= (i+1)
 			
 			for miniBatches in shuffling:
 				g = objLR.logit_cost_grad(self.weights, Ktrain[miniBatches], ytrain[miniBatches])
 				self.weights = self.weights - stepSize * g
+			
+				counter += 1
+				err1 = np.dot(self.weights, Ktrain[miniBatches].T) > 0.5
+				err2 = ytrain[miniBatches] > 0.5
+				if err1 == err2:
+					trueVar += 1
 
+			print(trueVar / counter)
+				
 		### END YOUR CODE
 
 		self.transformed = Ktrain # Don't delete this line. It's for evaluation.
@@ -492,7 +535,7 @@ class KernelLogitReg(LogitReg):
 		if self.params['kernel'] == 'linear':
 			kernelTest = np.dot(Xtest, self.kernel.T) 
 		elif self.params['kernel'] == 'hamming':
-			print("bbb")
+		#	print("bbb")
 			kernelTest = self.hammingDis(Xtest)
 			
 		testYnoSig = np.dot(self.weights, kernelTest.transpose())
@@ -506,7 +549,7 @@ class KernelLogitReg(LogitReg):
 	def hammingDis(self, Xtrain):
 		Ktrain = None
 		Ktrain = np.zeros((Xtrain.shape[0], self.kNum))
-		print(Xtrain.shape)
+	#	print(Xtrain.shape)
 
 		for i in range(Xtrain.shape[0]):
 			for k in range(self.kNum):
@@ -515,7 +558,7 @@ class KernelLogitReg(LogitReg):
 					if Xtrain[i][j] == Xtrain[k][j]:
 						Ktrain[i, k] += 1	
 						
-		print(Ktrain)
+	#	print(Ktrain)
 		return Ktrain
 		
 		
